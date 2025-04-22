@@ -21,7 +21,6 @@ int main(int argc, char* argv[]) {
     int frameNum = 0;               // stores physical frame number, which starts at 0 (and will be sequentially incremented)
     p2AddrTr mtrace;                // structure is typedefed in vaddr_tracereader
     unsigned int vAddr;             // unsigned 32-bit integer type
-    int cont_addresses = 0;         // to count addresses
 
     std::vector<WSClockEntry> WSclock;      // vector list of type WSClockEntryto hold the clocks entries
     int clock_hand_position = 0;            // position of lock hand starting at 0
@@ -34,7 +33,7 @@ int main(int argc, char* argv[]) {
 
     // command line argument parsing
     int opt;
-    while ((opt = getopt(argc, argv, "n:f:a:l")) != -1) {
+    while ((opt = getopt(argc, argv, "n:f:a:l:")) != -1) {
         switch (opt) {
             case 'n':
                 maxNumMemAccesses = atoi(optarg);
@@ -109,7 +108,7 @@ int main(int argc, char* argv[]) {
     
     // main memory access loop
     // magic number for maxnumMemAccess!!
-    while ((maxNumMemAccesses == -1 || cont_addresses < maxNumMemAccesses) && NextAddress(mtrace_file, &mtrace)) {
+    while ((maxNumMemAccesses == -1 || numOfAddresses < maxNumMemAccesses) && NextAddress(mtrace_file, &mtrace)) {
         vAddr = mtrace.addr;        // reading & storing virtual address
 
         // extracting VPNs for each level
@@ -123,20 +122,26 @@ int main(int argc, char* argv[]) {
 
         // checking if the address has existing mapping already
         Map* map = findVpn2PfnMapping(page_table, vAddr);
+        unsigned int fullVPN = vAddr >> page_table->numOfBitsOffset; // the full VPN for logging
 
         if (map != nullptr) {                // pagetable hit
             page_table->pageTableHits++;
             WSClock_entry[map->frameNum]->lastUsedTime = numOfAddresses;        // updating last used time
-            if (isWrite) WSClock_entry[map->frameNum]->dirty = true;            // if written, flag as dirty
-            if (strcmp(logMode, "vpn2pfn_pr") == 0)
-                log_mapping(vAddr >> page_table->numOfBitsOffset, map->frameNum, -1, true);     // logging map hit
+            if (isWrite) {
+                WSClock_entry[map->frameNum]->dirty = true;            // if the page is written, flag it as dirty
+            }
+            if (strcmp(logMode, "vpn2pfn_pr") == 0){
+                log_mapping(fullVPN, map->frameNum, -1, true);     // logging map hit
+            }
+                
         }
         else {                               // pagetable miss
             if (page_table->numOfFramesAllocated < numPhysicalFrames) {         // checking if a free frame is available
                 insertVpn2PfnMapping(page_table, vAddr, frameNum);              // if yes, add new mapping
                 WSClock_entry[frameNum] = create_WSClock_entry(vAddr, frameNum, numOfAddresses, isWrite);
-                if (strcmp(logMode, "vpn2pfn_pr") == 0)
-                    log_mapping(vAddr >> page_table->numOfBitsOffset, frameNum, -1, false);     // logging new map
+                if (strcmp(logMode, "vpn2pfn_pr") == 0){
+                    log_mapping(fullVPN, frameNum, -1, false);     // logging new map
+                }
                 frameNum++;                 // incrementing frameNum
             }
             else {                          // performing page replacement
@@ -144,27 +149,29 @@ int main(int argc, char* argv[]) {
                 clock_hand_position = page_replacement(WSClock_entry, clock_hand_position, ageRecentLastAccess, numOfAddresses, vAddr >> page_table->numOfBitsOffset, page_table);
                 int replacedFrame = WSClock_entry[clock_hand_position]->frameNum;
                 page_table->numOfPageReplaced++;
-                if (strcmp(logMode, "vpn2pfn_pr") == 0)
-                    log_mapping(vAddr >> page_table->numOfBitsOffset, replacedFrame, victimVpn, false);
+                if (strcmp(logMode, "vpn2pfn_pr") == 0){
+                    log_mapping(fullVPN, replacedFrame, victimVpn, false);
+                }
+                    
             }
         }
 
-        cont_addresses++;                   // incrementing address counter
         page_table->numOfAddresses++;       // updating total number of address for pagetable
 
             // if max number of memory accesses is specified (in command line) > 0
             // and if max number of memory accesses is reached (>= maxNumMemAccesses), then exit while loop
-            if (maxNumMemAccesses > 0 && cont_addresses >= maxNumMemAccesses) {
+            if (maxNumMemAccesses > 0 && numOfAddresses >= maxNumMemAccesses) {
                 break;
             }
     }
 
 
     // print logs given the log mode from command line
-    if (logMode == "bitmasks") {    // print bit masks for each level, starting with lowest tree level
+    if (strcmp(logMode, "bitmasks") == 0){
         log_bitmasks(page_table->levelCount, page_table->bitMaskAry);
     }
-    else if (logMode == "summary") {
+
+    else if (strcmp(logMode, "summary") == 0) {
         log_summary(page_table->pageSize, page_table->numOfPageReplaced, page_table->pageTableHits,
             page_table->numOfAddresses, page_table->numOfFramesAllocated, page_table->pgTableEntries);
     }
