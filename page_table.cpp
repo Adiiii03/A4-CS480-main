@@ -126,7 +126,7 @@ void insertVpn2PfnMapping(PageTable* PageTable, unsigned int VPN, int frameNum) 
     for (int i=0; i < PageTable->levelCount; ++i) {
 
         int vpn_index = getVPNFromVirtualAddress(VPN, PageTable->bitMaskAry[i], PageTable->shiftAry[i]);
-        if (vpn_index < 0 || vpn_index >= PageTable->entryCount[i]) {
+        if (vpn_index < 0) {
           return;
         }
 
@@ -160,7 +160,9 @@ Map* findVpn2PfnMapping(PageTable* PageTable, unsigned int VPN) {
 
       	// extracting the index into that level's array
         int index = getVPNFromVirtualAddress(VPN, PageTable->bitMaskAry[i], PageTable->shiftAry[i]);
-        if (index < 0 || index >= PageTable->entryCount[i]) return nullptr;
+        if (index < 0) {
+          return nullptr;
+        }
         
 
         // if at leaf level and the map object has a valid flag, return the map
@@ -180,3 +182,4 @@ Map* findVpn2PfnMapping(PageTable* PageTable, unsigned int VPN) {
     }
     return nullptr;
 }
+
